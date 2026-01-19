@@ -1,0 +1,63 @@
+---
+- name: Configure EC2 Web Server
+  hosts: ec2
+  become: true
+  tasks:
+
+    - name: Update system packages
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Stop and uninstall Nginx if present
+      yum:
+        name: nginx
+        state: absent
+      ignore_errors: true
+
+    - name: Install Apache httpd
+      yum:
+        name: httpd
+        state: present
+
+    - name: Start and enable httpd
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Get IMDSv2 token
+      uri:
+        url: http://169.254.169.254/latest/api/token
+        method: PUT
+        headers:
+          X-aws-ec2-metadata-token-ttl-seconds: 21600
+        return_content: yes
+      register: imds_token
+
+    - name: Fetch public IP
+      uri:
+        url: http://169.254.169.254/latest/meta-data/public-ipv4
+        method: GET
+        headers:
+          X-aws-ec2-metadata-token: "{{ imds_token.content }}"
+        return_content: yes
+      register: ec2_public_ip
+
+    - name: Fetch public hostname
+      uri:
+        url: http://169.254.169.254/latest/meta-data/public-hostname
+        method: GET
+        headers:
+          X-aws-ec2-metadata-token: "{{ imds_token.content }}"
+        return_content: yes
+      register: ec2_public_hostname
+
+    - name: Print public IP
+      debug:
+        msg: "EC2 public IP is {{ ec2_public_ip.content }}"
+
+    - name: Restart httpd
+      service:
+        name: httpd
+        state: restarted
